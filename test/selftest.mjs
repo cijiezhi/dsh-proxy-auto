@@ -74,6 +74,7 @@ await test('地址存在但没人监听 → 判定为直连（根治"代理一�
   const state = new detect.ProxyState({
     ttlMs: 0,
     probeTimeoutMs: 300,
+    platform: 'win32', // 注册表分支只在 win32 执行；注入它让 ubuntu CI 也能跑同一条断言
     execFileImpl: (file, args, options, cb) => {
       if (args.includes('ProxyEnable')) return cb(null, 'ProxyEnable    REG_DWORD    0x1\n')
       return cb(null, 'ProxyServer    REG_SZ    127.0.0.1:19992\n')
@@ -89,6 +90,7 @@ await test('代理从"关"到"开" → 重新探测能发现', async () => {
   const state = new detect.ProxyState({
     ttlMs: 0,
     probeTimeoutMs: 300,
+    platform: 'win32',
     execFileImpl: (file, args, options, cb) => {
       if (args.includes('ProxyEnable')) return cb(null, `ProxyEnable    REG_DWORD    0x${enabled ? 1 : 0}\n`)
       return cb(null, 'ProxyServer    REG_SZ    127.0.0.1:19993\n')
@@ -106,6 +108,7 @@ await test('注册表读不到（沙箱/非 Windows）→ 直连，且不抛异�
   delete process.env.DSH_PROXY_AUTO_REGISTRY
   const state = new detect.ProxyState({
     ttlMs: 0,
+    platform: 'win32',
     execFileImpl: () => {
       throw Object.assign(new Error('spawn EPERM'), { code: 'EPERM' })
     },
