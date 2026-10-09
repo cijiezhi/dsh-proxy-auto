@@ -1,0 +1,36 @@
+{
+  "name": "dsh-proxy-auto",
+  "version": "2.0.0",
+  "private": true,
+  "description": "让 DSH 自动跟随本机代理（开着走代理、关着直连，开关都不需要重启），并提供能翻墙抓页面的 proxy_fetch 工具。零 junction 依赖，可独立重装。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "install.ps1",
+    "README.md",
+    "INSTALL.md"
+  ],
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.1.5-rc.1"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node test/selftest.mjs && node test/standalone.mjs",
+    "test:core": "node test/selftest.mjs",
+    "test:standalone": "node test/standalone.mjs"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,26 @@
+# 依赖与本地产物（插件自身零依赖，这里只防误提交）
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+
+# 本机运行产物
+*.state.json
+*.log
+
+# 安装脚本的备份与临时文件
+*.bak
+*.bak-*
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# 环境与密钥（绝不提交）
+.env
+.env.*
+!.env.example
+*.pem
+*.key

@@ -1,0 +1,9 @@
+# dsh-proxy-auto bundle patch（宿主半边）
+#
+# 【规范依据】bundle 的 patch 是「patch 条目数组」；官方 layer 语义是：按 id 命中已有行走覆盖，
+# 没有命中才需要 insert 新建。本插件不覆盖任何既有行，只插入自己，
+# 因此这里【只有】一个 insert 块 —— 绝不能把「覆盖已有 id」塞进 insert（那会 duplicate loader entry id → boot 崩）。
+
+- insert:
+    - id: dsh-proxy-auto
+      name: 'dsh-proxy-auto'
