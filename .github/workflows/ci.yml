@@ -1,0 +1,44 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: node ${{ matrix.node }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 语法检查
+        run: |
+          node --check lib/index.js
+          node --check lib/config.js
+          node --check lib/config-schema.js
+          node --check lib/schema-loader.js
+          node --check lib/tool-schema.js
+          node --check lib/detect.js
+          node --check lib/global-dispatcher.js
+          node --check lib/proxy-seam.js
+          node --check lib/env-persist.js
+          node --check lib/fetch-tool.js
+
+      - name: 自测 · 独立包（零 junction 解析 / schema / 工具契约）
+        run: node test/standalone.mjs
+
+      - name: 自测 · 核心（探测底线 / seam 装卸 / .env 维护 / dispatcher 切换）
+        run: node test/selftest.mjs

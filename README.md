@@ -1,5 +1,18 @@
 # dsh-proxy-auto · 让 DSH 自动跟随本机代理，并给我一个能翻墙的抓取工具
 
+[![tests](https://github.com/cijiezhi/dsh-proxy-auto/actions/workflows/ci.yml/badge.svg)](https://github.com/cijiezhi/dsh-proxy-auto/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![node](https://img.shields.io/badge/node-%3E%3D22.19-339933.svg)](package.json)
+
+> **English** — A DeepSeek Harness (DSH) plugin that makes the host follow your local proxy **at runtime**
+> (turning the proxy on/off needs **no restart**), plus a `proxy_fetch` tool that **can read blocked pages**.
+> Why the tool: DSH's built-in `web_fetch` deliberately **bypasses** the global dispatcher
+> (it pins IPs to prevent SSRF/DNS-rebinding), so it can never go through a proxy — that is by design,
+> and no plugin can change it. `proxy_fetch` uses an **explicit dispatcher** instead
+> (proxy → `ProxyAgent`, no proxy → bare `Agent`), so it follows the proxy without ever hanging on a dead port.
+> Zero static `@deepseek-ai/*` dependencies (host packages are resolved at runtime), so it survives
+> machine moves and DSH upgrades with a single idempotent script — see **[INSTALL.md](INSTALL.md)**.
+
 **一句话**：代理软件开着，DSH 的一切出网就走代理；关掉就立刻直连。**开关代理都不需要重启**，
 也不往任何地方写死代理地址（写死 = 代理一关就断网，这是踩过的坑）。
 
