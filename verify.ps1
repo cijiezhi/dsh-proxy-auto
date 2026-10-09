@@ -109,6 +109,46 @@ if (Test-Path $statePath) {
   Info "尚无快照（$statePath）——插件可能未加载，或还没跑过一个检测周期"
 }
 
+Section '5. 仓库完整性（防止 git 元数据被安装流程碰坏）'
+# 背景：GUI 里从 GitHub 安装同名插件时，若 profile 里原本是 link: 指向同一目录，
+# 替换/回滚路径可能削掉 .git 的部分文件（HEAD / config / index / packed-refs）。
+# 表现为 git 突然报 "not a git repository"。这里提前体检，别等 git 报错才发现。
+$gitDir = Join-Path $root '.git'
+if (-not (Test-Path $gitDir)) {
+  Info '不是 git 检出（从 Release 的 zip 解压安装时属正常，无需处理）'
+} else {
+  $required = 'HEAD', 'config', 'objects', 'refs'
+  $missing = @()
+  foreach ($item in $required) {
+    if (-not (Test-Path (Join-Path $gitDir $item))) { $missing += $item }
+  }
+  # index 只有在已有提交的仓库里才必然存在
+  if (-not (Test-Path (Join-Path $gitDir 'index'))) { $missing += 'index' }
+
+  if ($missing.Count -gt 0) {
+    Bad ".git 元数据不完整，缺少：$($missing -join ', ')"
+    Write-Host '         修复办法（工作区文件不会丢，提交都已在远端）：' -ForegroundColor Yellow
+    Write-Host '           Move-Item .git .git.broken' -ForegroundColor Gray
+    Write-Host '           git init -b main; git remote add origin <仓库地址>' -ForegroundColor Gray
+    Write-Host '           git fetch origin --tags; git reset --mixed origin/main' -ForegroundColor Gray
+  } else {
+    # 让 git 自己确认一遍（比逐个文件更权威）
+    $head = & git -C $root rev-parse --short HEAD 2>$null
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($head)) {
+      Bad 'git 元数据文件都在，但 git 仍无法识别该仓库（可能指向了错误的目录或对象库损坏）'
+    } else {
+      $branch = & git -C $root rev-parse --abbrev-ref HEAD 2>$null
+      Ok "git 仓库完好：$branch @ $head"
+      $dirty = & git -C $root status --porcelain 2>$null
+      if ($dirty) { Info "工作区有 $($dirty.Count) 处未提交改动（开发中属正常）" } else { Info '工作区干净' }
+      $upstream = & git -C $root rev-parse --short origin/main 2>$null
+      if ($upstream) {
+        Info "本地 $head / origin/main $upstream$(if ($head -eq $upstream) { '（已同步）' } else { '（不一致，注意）' })"
+      }
+    }
+  }
+}
+
 Section '结论'
 if ($failures -eq 0) {
   Write-Host "  体检通过。若代理开着但抓不到墙外页面，请把上面第 4 节的内容贴出来排查。" -ForegroundColor Green

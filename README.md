@@ -35,7 +35,7 @@ pwsh -File .\install.ps1        # 幂等；-Profile web 换 profile，-Check 只
 装完**重启 DSH 一次**（宿主半边只在启动时加载）。验证：
 
 ```powershell
-pwsh -File .\verify.ps1         # 一条命令做体检，输出可直接贴出来排查
+pwsh -File .\verify.ps1         # 体检：宿主依赖 / 自测 / 运行快照 / 仓库完整性，输出已脱敏可直接贴出
 ```
 
 ## 为什么需要它

@@ -5,6 +5,10 @@
 
 ## [Unreleased]
 
+- `verify.ps1` 新增**仓库完整性检查**：确认 `.git/HEAD|config|index|objects|refs` 齐全、`git` 能识别该仓库、
+  与 `origin/main` 是否同步。起因是实测到 GUI 从 GitHub 安装同名插件时（profile 里原本是 `link:` 指向
+  同一目录），替换/回滚路径可能削掉 `.git/HEAD|config|index`，使 `git` 突然报 "not a git repository"；
+  现在跑一次体检即可提前发现，并给出重建步骤（工作区文件不会丢，提交都已在远端）。
 - 计划：把 `proxy_fetch` 的正文抽取做得更好（当前为轻量 HTML → 文本转换）。
 
 ## [2.0.1] — 2026-10-09
