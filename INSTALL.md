@@ -46,8 +46,8 @@ pwsh -File .\install.ps1 -Uninstall           # 反向：从 profile 摘掉
 ```jsonc
 {
   "dependencies": {
-    // 关键：用 link: 指向插件目录的绝对路径（Windows 用正斜杠）
-    "dsh-proxy-auto": "link:E:/DSH_Project/dsh_main/dsh-proxy-auto"
+    // 关键：用 link: 指向插件目录（把 <插件目录> 换成你 clone/解压出来的绝对路径，Windows 用正斜杠）
+    "dsh-proxy-auto": "link:<插件目录>"
   },
   "dsh": {
     "profile": {
@@ -60,6 +60,8 @@ pwsh -File .\install.ps1 -Uninstall           # 反向：从 profile 摘掉
   }
 }
 ```
+
+> 用 `install.ps1` 的话这一步是自动的——它会填好真实路径。
 
 ### 2.2 确认插件目录**没有**指向宿主的 junction
 

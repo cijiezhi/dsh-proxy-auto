@@ -24,3 +24,6 @@ desktop.ini
 !.env.example
 *.pem
 *.key
+
+# 发布附件（在 Release 里上传，不入库）
+*.zip

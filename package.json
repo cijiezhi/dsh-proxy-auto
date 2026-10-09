@@ -13,8 +13,11 @@
     "lib",
     "cordis.patch.yml",
     "install.ps1",
+    "verify.ps1",
     "README.md",
-    "INSTALL.md"
+    "README.en.md",
+    "INSTALL.md",
+    "CHANGELOG.md"
   ],
   "dsh": {
     "engines": {

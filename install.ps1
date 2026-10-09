@@ -45,25 +45,64 @@ if ([string]::IsNullOrWhiteSpace($PluginPath)) {
 }
 $PluginPath = (Resolve-Path $PluginPath).Path
 
-function Write-Step($text) { Write-Host "==> $text" -ForegroundColor Cyan }
-function Write-Ok($text) { Write-Host "    OK  $text" -ForegroundColor Green }
-function Write-Warn2($text) { Write-Host "    !!  $text" -ForegroundColor Yellow }
+<#
+  输出脱敏：本机用户名 / 主目录 / AppData 一律替换后再打印。
+  理由：安装与排障的输出经常被贴到 issue 或聊天里，不该顺带暴露账户名与目录结构。
+#>
+function Mask($text) {
+  $out = [string]$text
+  if ($env:USERNAME) { $out = $out.Replace($env:USERNAME, '<user>') }
+  if ($env:USERPROFILE) { $out = $out.Replace($env:USERPROFILE, '~') }
+  if ($env:APPDATA) { $out = $out.Replace($env:APPDATA, '<appdata>') }
+  if ($env:LOCALAPPDATA) { $out = $out.Replace($env:LOCALAPPDATA, '<localappdata>') }
+  $out = $out -replace '(?i)[A-Z]:\\Users\\[^\\]+', '<home>'
+  return $out
+}
+
+function Write-Step($text) { Write-Host "==> $(Mask $text)" -ForegroundColor Cyan }
+function Write-Ok($text) { Write-Host "    OK  $(Mask $text)" -ForegroundColor Green }
+function Write-Warn2($text) { Write-Host "    !!  $(Mask $text)" -ForegroundColor Yellow }
 
 # ── 1. 定位 DSH 安装与 profile 目录 ──────────────────────────────────────────
+
+# 主目录：Windows 用 USERPROFILE，Unix 用 HOME（直接取 USERPROFILE 会在 Linux/macOS 上抛错）。
+$homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { (Get-Location).Path }
+$dshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $homeDir '.dsh' }
+
+# 组合路径：基路径为空时返回 $null（调用处用 Where-Object 过滤）。
+# 用"返回值"而不是"往数组里追加"，是为了避开 PowerShell 脚本块的作用域陷阱：
+# 在脚本块里写 $script:candidates 会落到外层，曾经因此把候选列表清空、-Check 直接失败。
+function Combine-IfBase($base, $relative) {
+  if ([string]::IsNullOrWhiteSpace($base)) { return $null }
+  # 只接受绝对路径：`npm root -g` 在环境变量缺失时会吐出相对路径（甚至含 `${APPDATA}` 字面量），
+  # 直接拿来做候选会污染错误信息、也可能误命中当前目录。相对路径一律丢弃。
+  if (-not [IO.Path]::IsPathRooted($base)) { return $null }
+  return [IO.Path]::Combine($base, $relative)
+}
+
 function Resolve-DshInstall {
-  $candidates = @()
-  if ($env:APPDATA) { $candidates += (Join-Path $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh') }
   $npmRoot = $null
   try { $npmRoot = (& npm root -g 2>$null) } catch { }
-  if ($npmRoot) { $candidates += (Join-Path $npmRoot '@deepseek-ai\dsh') }
+  $candidates = @(
+    (Combine-IfBase $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh'),
+    (Combine-IfBase $env:HOME '.npm-global\lib\node_modules\@deepseek-ai\dsh'),
+    '/usr/local/lib/node_modules/@deepseek-ai/dsh',
+    '/usr/lib/node_modules/@deepseek-ai/dsh',
+    (Combine-IfBase $npmRoot '@deepseek-ai\dsh')
+  ) | Where-Object { $_ }
 
   foreach ($candidate in $candidates) {
     if ($candidate -and (Test-Path (Join-Path $candidate 'package.json'))) { return (Resolve-Path $candidate).Path }
   }
-  throw "找不到 DSH 安装目录。请用 -Profile 指定 profile，或设置 APPDATA；候选路径：`n  $($candidates -join "`n  ")"
+  $isWindowsHost = ($IsWindows -eq $true) -or ($env:OS -eq 'Windows_NT')
+  $hint = if ($isWindowsHost) {
+    '请确认 DSH 是用 npm 全局安装的，或用 -PluginPath / -Profile 指定。'
+  } else {
+    '本脚本主要为 Windows 编写；Linux/macOS 请按 INSTALL.md 的「手工安装」一节操作（同样只需改 profile 的 package.json）。'
+  }
+  throw "找不到 DSH 安装目录。$hint`n已尝试：`n  $($candidates -join "`n  ")"
 }
 
-$dshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
 $profileDir = Join-Path $dshHome "profiles\$Profile"
 $profilePackage = Join-Path $profileDir 'package.json'
 if (-not (Test-Path $profileDir)) { throw "profile 目录不存在：$profileDir" }
@@ -108,13 +147,14 @@ if ($Uninstall) {
   exit 0
 }
 
-# ── 3. （可选）建 junction ──────────────────────────────────────────────────
-# 2.0 起插件**不再需要** junction：schemastery/undici 都由插件在运行时按宿主安装路径解析。
-# 这里默认只在"宿主缺依赖且你确实想兜底"时创建；-Check 模式下不写盘。
+# ── 3. （可选）建依赖链接 ───────────────────────────────────────────────────
+# 2.0 起插件**不再需要**链接：schemastery/undici 都由插件在运行时按宿主安装路径解析。
+# Windows 上顺手建 junction 只是为了兼容更老/更特殊的环境；非 Windows 用符号链接，
+# 建不了就跳过（完全不影响功能）。-Check 模式不写盘。
 Write-Step '依赖链接（可选，2.0 起非必需）'
-$pluginModules = Join-Path $PluginPath 'node_modules\@deepseek-ai'
+$pluginModules = Join-Path $PluginPath 'node_modules/@deepseek-ai'
 $linkTargets = @{
-  'schemastery' = Join-Path $dshInstall 'node_modules\@deepseek-ai\schemastery'
+  'schemastery' = Join-Path $dshInstall 'node_modules/@deepseek-ai/schemastery'
 }
 if ($Check) {
   foreach ($name in $linkTargets.Keys) {
@@ -130,8 +170,17 @@ if ($Check) {
     if (Test-Path $link) {
       Write-Ok "@deepseek-ai/$name 链接已存在（无需处理）"
     } else {
-      New-Item -ItemType Junction -Path $link -Target $target | Out-Null
-      Write-Ok "@deepseek-ai/$name → $target"
+      # Windows 用 junction，Unix 用符号链接；建不了就跳过——插件本身不依赖它。
+      try {
+        if ($IsWindows -or $env:OS -eq 'Windows_NT') {
+          New-Item -ItemType Junction -Path $link -Target $target | Out-Null
+        } else {
+          New-Item -ItemType SymbolicLink -Path $link -Target $target | Out-Null
+        }
+        Write-Ok "@deepseek-ai/$name → $target"
+      } catch {
+        Write-Warn2 "@deepseek-ai/$name 建链接失败（不影响功能，可忽略）：$($_.Exception.Message)"
+      }
     }
   }
 }
@@ -146,25 +195,34 @@ else { $json.dsh.profile.bundles = $bundles }
 Save-Profile $json
 
 # ── 5. 自检 ────────────────────────────────────────────────────────────────
+# 路径一律用正斜杠：Windows 与 Unix 都接受，避免跨平台时 Test-Path 假失败。
 Write-Step '自检'
-$patchText = Get-Content (Join-Path $PluginPath 'cordis.patch.yml') -Raw
+$patchFile = Join-Path $PluginPath 'cordis.patch.yml'
+$patchText = if (Test-Path $patchFile) { Get-Content $patchFile -Raw } else { '' }
 $insertBlocks = ([regex]::Matches($patchText, '(?m)^\s*-\s*insert\s*:')).Count
 $checks = @()
-$checks += @{ name = '插件入口存在'; ok = (Test-Path (Join-Path $PluginPath 'lib\index.js')) }
-$checks += @{ name = 'cordis.patch.yml 存在'; ok = (Test-Path (Join-Path $PluginPath 'cordis.patch.yml')) }
+$checks += @{ name = '插件入口存在'; ok = (Test-Path (Join-Path $PluginPath 'lib/index.js')) }
+$checks += @{ name = 'cordis.patch.yml 存在'; ok = (Test-Path $patchFile) }
 $checks += @{ name = 'patch 只有一个 insert 块（多块会 duplicate entry id）'; ok = ($insertBlocks -le 1) }
-$checks += @{ name = '宿主有 schemastery（运行时解析，无需 junction）'; ok = (Test-Path (Join-Path $dshInstall 'node_modules\@deepseek-ai\schemastery\package.json')) }
-$checks += @{ name = '宿主有 dsh-http-proxy（官方代理 seam）'; ok = (Test-Path (Join-Path $dshInstall 'node_modules\@deepseek-ai\dsh-http-proxy\package.json')) }
-$checks += @{ name = '宿主有 undici（全局 dispatcher）'; ok = (Test-Path (Join-Path $dshInstall 'node_modules\undici\package.json')) }
+$checks += @{ name = '宿主有 schemastery（运行时解析用）'; ok = (Test-Path (Join-Path $dshInstall 'node_modules/@deepseek-ai/schemastery/package.json')) }
+$checks += @{ name = '宿主有 dsh-http-proxy（官方代理 seam）'; ok = (Test-Path (Join-Path $dshInstall 'node_modules/@deepseek-ai/dsh-http-proxy/package.json')) }
+$checks += @{ name = '宿主有 undici（全局 dispatcher 用）'; ok = (Test-Path (Join-Path $dshInstall 'node_modules/undici/package.json')) }
 $checks += @{ name = 'profile bundles 含插件'; ok = (@(Get-BundleList $json) -contains $packageName) }
-foreach ($c in $checks) { if ($c.ok) { Write-Ok $c.name } else { Write-Warn2 $c.name } }
+$checkFailures = 0
+foreach ($c in $checks) {
+  if ($c.ok) { Write-Ok $c.name } else { Write-Warn2 $c.name; $checkFailures++ }
+}
 if (-not $Check) {
   Write-Host '   提示：跑一遍自测最快验证插件本身：' -ForegroundColor Gray
-  Write-Host "     cd `"$PluginPath`"; node test/standalone.mjs; node test/selftest.mjs" -ForegroundColor Gray
+  Write-Host "     cd `"$(Mask $PluginPath)`"; node test/standalone.mjs; node test/selftest.mjs" -ForegroundColor Gray
 }
 
 Write-Host ''
 Write-Step '完成。请重启 DSH（宿主半边只在启动时加载）。'
 Write-Host '   重启后看这个文件确认状态：' -ForegroundColor Gray
-Write-Host "     $dshHome\dsh-proxy-auto.state.json" -ForegroundColor Gray
+Write-Host "     $(Mask (Join-Path $dshHome 'dsh-proxy-auto.state.json'))" -ForegroundColor Gray
 Write-Host '   其中 proxy / dispatcherPatched / probe 三个字段即可判断是否生效。' -ForegroundColor Gray
+
+# 显式退出码：0 = 一切正常；1 = 自检有失败项。
+# 必须显式设置——父脚本（verify.ps1）会读 $LASTEXITCODE，否则会拿到上一条外部命令的残留值而误判。
+if ($checkFailures -gt 0) { exit 1 } else { exit 0 }
