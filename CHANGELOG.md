@@ -7,6 +7,25 @@
 
 - 计划：把 `proxy_fetch` 的正文抽取做得更好（当前为轻量 HTML → 文本转换）。
 
+## [2.0.1] — 2026-10-09
+
+### 文档
+
+- README 按惯例重排（安装 → 为什么需要 → 做什么 / 不做什么 → 失败行为 → 用法 → 配置 → 验证），
+  并新增 `README.en.md`（英文版）、`CHANGELOG.md`、`verify.ps1`（一条命令体检）。
+- 补充**从仓库直接安装**的方式：`dsh plugin --profile <profile> add github:<owner>/<repo>`
+  （适用于 CLI 管理的 profile；`desktop` 由应用独占管理，请用脚本）。
+
+### 修复
+
+- `install.ps1` 在非 Windows / 环境变量缺失时不再抛错：`USERPROFILE` 缺失时退回 `HOME`，
+  `APPDATA` 判空，依赖链接在 Unix 上用符号链接（建不了就跳过，功能不受影响）。
+- `install.ps1` 现在**显式设置退出码**（0=正常，1=自检有失败项），避免父脚本读到残留的 `$LASTEXITCODE` 而误判。
+- 只接受**绝对路径**作为候选安装目录：`npm root -g` 在环境变量缺失时会输出相对路径（甚至含
+  `${APPDATA}` 字面量），此前会污染错误信息。
+- 两个脚本的输出做**脱敏**（用户名 → `<user>`、主目录 → `~`、AppData → `<appdata>`），
+  便于把排障输出直接贴到 issue 而不泄露本机信息。
+
 ## [2.0.0] — 2026-10-09
 
 首个公开版本。

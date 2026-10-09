@@ -16,24 +16,42 @@
 
 ---
 
-## 1. 一句话安装（推荐）
+## 1. 安装（三种方式，按你的 profile 选）
+
+### 1.1 从仓库直接安装（CLI 管理的 profile，如 `tui` / `web`）
+
+```sh
+dsh plugin --profile <profile> add github:cijiezhi/dsh-proxy-auto
+```
+
+- 参数会**原样转发给 pnpm**，因此 `github:` 前缀可以正常解析；
+- 本插件**没有任何构建步骤**（无 `prepare` / `postinstall`），所以不会被 pnpm 的
+  `allowBuilds` 拦住（带构建脚本的插件才需要手工放行）；
+- ⚠️ `desktop` profile **只能由 Electron 应用管理**，CLI 会直接拒绝——desktop 请用 1.2。
+
+### 1.2 本地脚本安装（推荐用于 `desktop`；离线也能用）
 
 在插件目录下执行：
 
 ```powershell
 pwsh -File .\install.ps1                      # 装到 desktop profile（默认）
 pwsh -File .\install.ps1 -Profile web         # 装到 web profile
+pwsh -File .\install.ps1 -Check               # 只预检，不写盘
 pwsh -File .\install.ps1 -Uninstall           # 反向：从 profile 摘掉
 ```
 
 脚本是**幂等**的，可以反复跑。它会：
 
-1. 定位 DSH 安装目录（`%APPDATA%\npm\node_modules\@deepseek-ai\dsh`，必要时用 `npm root -g`）；
-2. （可选）为 `@deepseek-ai/schemastery` 建 junction —— **新版插件其实不需要**，留着只是兼容旧布局；
+1. 定位 DSH 安装目录（Windows 默认 `%APPDATA%\npm\node_modules\@deepseek-ai\dsh`，必要时用 `npm root -g`）；
+2. （可选）为 `@deepseek-ai/schemastery` 建依赖链接 —— **2.0 起其实不需要**，只为兼容特殊布局；
 3. 把插件写进 profile 的 `package.json`：`dependencies`（`link:<插件绝对路径>`）+ `dsh.profile.bundles`；
-4. 先备份 `package.json`，再写入；最后做 5 项静态自检。
+4. 先备份 `package.json`（时间戳命名），再写入；最后做 7 项自检，并以**退出码**表示结果（0=正常）。
 
-**然后重启 DSH**（宿主半边只在启动时加载）。
+### 1.3 下载 Release 里的 zip
+
+解压到任意目录，然后按 1.2 执行 `install.ps1`（zip 内顶层目录就是 `dsh-proxy-auto/`）。
+
+**装完重启 DSH 一次**（宿主半边只在启动时加载），再跑 `verify.ps1` 体检。
 
 ---
 

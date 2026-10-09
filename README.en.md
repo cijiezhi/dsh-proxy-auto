@@ -15,10 +15,22 @@ proxy that disappears can never take the app's connectivity down with it.
 
 ## Install
 
+**Option 1 — straight from this repository** (for CLI-managed profiles such as `tui` / `web`):
+
+```sh
+dsh plugin --profile <profile> add github:cijiezhi/dsh-proxy-auto
+```
+
+This plugin has **no build step** (no `prepare` / `postinstall`), so pnpm's `allowBuilds` never blocks it.
+
+**Option 2 — the local installer** (required for the `desktop` profile, which the CLI refuses to manage):
+
 ```powershell
 cd <plugin-directory>
 pwsh -File .\install.ps1        # idempotent; -Profile web, -Check (dry run), -Uninstall
 ```
+
+**Option 3 — the zip attached to a Release**, extracted, then run `install.ps1` as above.
 
 Then restart DSH once (the host half is loaded at startup). To verify:
 

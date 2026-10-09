@@ -15,12 +15,24 @@
 
 ## 安装
 
+**方式一：从仓库直接安装**（CLI 管理的 profile，如 `tui` / `web`）
+
+```sh
+dsh plugin --profile <profile> add github:cijiezhi/dsh-proxy-auto
+```
+
+本插件**没有任何构建步骤**（无 `prepare`/`postinstall`），因此不会被 pnpm 的 `allowBuilds` 拦住。
+
+**方式二：本地安装脚本**（`desktop` profile 只能用这种，CLI 不允许操作 desktop）
+
 ```powershell
 cd <插件目录>
 pwsh -File .\install.ps1        # 幂等；-Profile web 换 profile，-Check 只预检，-Uninstall 卸载
 ```
 
-然后重启 DSH 一次（宿主半边只在启动时加载）。验证：
+**方式三：下载 Release 里的 zip**，解压后执行上面的 `install.ps1`。
+
+装完**重启 DSH 一次**（宿主半边只在启动时加载）。验证：
 
 ```powershell
 pwsh -File .\verify.ps1         # 一条命令做体检，输出可直接贴出来排查
