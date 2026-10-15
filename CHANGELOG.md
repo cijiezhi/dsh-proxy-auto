@@ -7,6 +7,31 @@
 
 - 计划：把 `proxy_fetch` 的正文抽取做得更好（当前为轻量 HTML → 文本转换）。
 
+## [2.0.6] — 2026-10-15
+
+### 变更
+
+- **`block` 决定现在也会追加纠正上下文**。官方 `PostToolDecision` 的 `accept` 与 `block` 两种形态
+  都声明了 `additionalContexts`，而 2.0.5 只处理 `accept`，等于放弃了一半的注入路径。现在 `block`
+  也追加（原样保留它的 `feedback`），其余决定类型仍原样放过。
+
+### 新增（诊断）
+
+- `fetchFallback` 快照新增 6 个自证字段，回答"装了却一次都没注入"到底卡在哪一步：
+  `calls`（钩子被调用次数）、`matched`（命中兜底条件次数）、`skippedKind`（被决定类型挡下的次数）、
+  `tools` / `errorTools`（见过的工具名 / 以失败结束过的工具名）、`kinds` 与 `lastDecisionKind`
+  （下游决定的类型分布）。有了它们，一次触发即可区分"钩子没接上""工具名不符""决定类型不符"
+  三种情形，不必再靠推断。
+
+### 修复（CI 与安装）
+
+- CI 的 `node --check` 列表补上 `lib/dsh-home.js`、`lib/prompt-hint.js`、`lib/fetch-fallback.js`：
+  这三个 2.0.3～2.0.5 新增的核心文件此前不在语法检查内，写错语法 CI 不会报。
+- `package.json` 的 `files` 白名单纳入 `test/`：此前发布包不含测试，而 `verify.ps1` 会无条件运行自测，
+  从仓库或 npm 安装的用户会看到"自测未通过"的假失败。
+- `verify.ps1` 的自测步骤增加存在性判断：测试文件缺失时显示"跳过"而非"未通过"（手工打的 zip
+  漏带 `test/` 时同样安全）；`install.ps1` 的同类提示也只在测试确实存在时才打印。
+
 ## [2.0.5] — 2026-10-15
 
 ### 新增

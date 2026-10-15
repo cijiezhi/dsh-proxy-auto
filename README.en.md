@@ -89,8 +89,21 @@ If `registered: false`, a `reason` says why; the tool still works, the model jus
 **Failure fallback (B)**: if the model still calls the built-in `web_fetch` first (which always fails on
 blocked sites), the plugin attaches a corrective context to that call on the `tools/post-execute` event —
 "`web_fetch` always connects directly by design; retry the same URL with `proxy_fetch`". The original error
-is left untouched. Disable with `fetchFallback: false`; `fetchFallback.injected` in the snapshot counts how
-many times the correction fired.
+is left untouched, both `accept` and `block` decisions get the context (`block` keeps its `feedback`), and
+`fetchFallback: false` disables it.
+
+To confirm it actually fired, read `fetchFallback` in the snapshot — it answers both "is it installed" and
+"why did it never inject".
+
+```jsonc
+"fetchFallback": { "installed": true, "injected": 1, "calls": 4, "matched": 1, "skippedKind": 0,
+                   "tools": ["pwsh", "web_fetch"], "errorTools": ["web_fetch"],
+                   "kinds": { "accept": 4 }, "lastDecisionKind": "accept", "lastError": null }
+```
+
+`injected` counts corrections; `calls` / `matched` / `skippedKind` / `kinds` locate a silent failure:
+`calls: 0` = the hook never ran; `matched: 0` = tool name or error flag mismatch (see `errorTools`);
+`skippedKind > 0` = unexpected decision kind (see `kinds`).
 
 **How A and B divide the work**: A (prompt section) makes the model pick the right tool most of the time;
 B (fallback) recovers the case where it picks the wrong one.
@@ -143,7 +156,7 @@ Via: http://127.0.0.1:<your-proxy-port>
 
 ```sh
 node test/standalone.mjs   # 9 tests: host-package resolution without junctions / schema / tool contract
-node test/selftest.mjs     # 17 tests: detection guarantees / official seam install & removal / .env / dispatcher
+node test/selftest.mjs     # 37 tests: detection guarantees / official seam install & removal / .env / dispatcher / prompt section / failure fallback
 ```
 
 On a machine without DSH, host-dependent cases are skipped automatically (that is the CI case), so anyone

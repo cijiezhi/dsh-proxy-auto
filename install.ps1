@@ -213,8 +213,11 @@ foreach ($c in $checks) {
   if ($c.ok) { Write-Ok $c.name } else { Write-Warn2 $c.name; $checkFailures++ }
 }
 if (-not $Check) {
-  Write-Host '   提示：跑一遍自测最快验证插件本身：' -ForegroundColor Gray
-  Write-Host "     cd `"$(Mask $PluginPath)`"; node test/standalone.mjs; node test/selftest.mjs" -ForegroundColor Gray
+  # 发布包未必带 test/：只有测试确实存在时才提示怎么跑，避免给出跑不通的命令。
+  if (Test-Path (Join-Path $PluginPath 'test/selftest.mjs')) {
+    Write-Host '   提示：跑一遍自测最快验证插件本身：' -ForegroundColor Gray
+    Write-Host "     cd `"$(Mask $PluginPath)`"; node test/standalone.mjs; node test/selftest.mjs" -ForegroundColor Gray
+  }
 }
 
 Write-Host ''

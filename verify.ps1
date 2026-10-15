@@ -79,14 +79,20 @@ if ($env:APPDATA) {
 
 if (-not $SkipTests) {
   Section '3. 自测'
-  Push-Location $root
-  try {
-    & node test/standalone.mjs
-    if ($LASTEXITCODE -ne 0) { Bad 'test/standalone.mjs 未通过' } else { Ok 'test/standalone.mjs 通过' }
-    & node test/selftest.mjs
-    if ($LASTEXITCODE -ne 0) { Bad 'test/selftest.mjs 未通过' } else { Ok 'test/selftest.mjs 通过' }
-  } finally {
-    Pop-Location
+  # 发布包未必带 test/（手工打的 zip、或安装方式未覆盖）：缺失时跳过，而不是误报"未通过"。
+  $testFiles = @('test/standalone.mjs', 'test/selftest.mjs') | Where-Object { Test-Path (Join-Path $root $_) }
+  if ($testFiles.Count -eq 0) {
+    Info '本目录不含 test/，跳过自测（确认插件本身请在有源码的目录下运行）'
+  } else {
+    Push-Location $root
+    try {
+      foreach ($t in $testFiles) {
+        & node $t
+        if ($LASTEXITCODE -ne 0) { Bad "$t 未通过" } else { Ok "$t 通过" }
+      }
+    } finally {
+      Pop-Location
+    }
   }
 }
 

@@ -82,8 +82,20 @@ DSH 的出站代理策略**只在启动时读一次**环境变量。于是有两
 
 **失败兜底（B 方案）**：即使模型还是先调了官方 `web_fetch`（对被墙站点必然失败），插件会在
 `tools/post-execute` 事件上给这次调用**追加一条纠正上下文**——"`web_fetch` 按设计永远直连，
-同一 URL 改用 `proxy_fetch` 重试"。原始报错保持不变；可用 `fetchFallback: false` 关掉；
-快照里的 `fetchFallback.injected` 会累计"纠正过几次"。
+同一 URL 改用 `proxy_fetch` 重试"。原始报错保持不变；官方 `accept` 与 `block` 两种决定都会追加
+（`block` 的 `feedback` 原样保留）；可用 `fetchFallback: false` 关掉。
+
+怎么确认它真的触发了：看快照里的 `fetchFallback`，它同时回答"装没装上"和"为什么一次都没注入"。
+
+```jsonc
+"fetchFallback": { "installed": true, "injected": 1, "calls": 4, "matched": 1, "skippedKind": 0,
+                   "tools": ["pwsh", "web_fetch"], "errorTools": ["web_fetch"],
+                   "kinds": { "accept": 4 }, "lastDecisionKind": "accept", "lastError": null }
+```
+
+`injected` 是累计纠正次数；`calls` / `matched` / `skippedKind` / `kinds` 用来定位"一次都没注入"：
+`calls: 0` = 钩子没接上；`matched: 0` = 工具名或失败标志不符（看 `errorTools`）；
+`skippedKind > 0` = 下游决定类型不符（看 `kinds`）。
 
 **A 与 B 的分工**：A（引导段）让模型**大概率**一开始就选对工具；B（兜底）保证即使选错也能被拉回来。
 
@@ -145,7 +157,7 @@ Via: http://127.0.0.1:<你的代理端口>
 
 ```sh
 node test/standalone.mjs   # 9 项：零 junction 解析宿主依赖 / schema / 工具契约
-node test/selftest.mjs     # 17 项：探测底线 / 官方 seam 装卸 / .env 维护 / dispatcher 切换
+node test/selftest.mjs     # 37 项：探测底线 / 官方 seam 装卸 / .env 维护 / dispatcher 切换 / 提示词引导段 / 失败兜底
 ```
 
 没装 DSH 的机器上，宿主相关用例会自动 SKIP（CI 即此情形），因此任何人 clone 下来都能跑通。
