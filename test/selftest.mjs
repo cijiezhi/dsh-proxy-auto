@@ -243,17 +243,32 @@ if (savedDshHome === undefined) { delete process.env.DSH_HOME } else { process.e
 
 console.log('\nprompt-hint.js · 系统提示词引导段（解决"模型不主动调用工具"）')
 const hintMod = await import(new URL('../lib/prompt-hint.js', import.meta.url).href)
-await test('注册参数正确：段名 / 段位 / 文案', () => {
+await test('注册参数正确：段名 / 段位 / 文案（走 ctx.get，即真实宿主路径）', () => {
   let captured = null
-  const result = hintMod.installPromptHint(
-    { systemPrompt: { section: (section) => { captured = section; return () => {} } } },
-    hintMod.resolveHintText('')
-  )
+  const fakeCtx = {
+    // 官方 SKILL.md：可选服务用 ctx.get(name)（不需要 inject）；ctx.name 才需要 inject。
+    get: (name) => (name === 'systemPrompt' ? { section: (section) => { captured = section; return () => {} } } : undefined),
+  }
+  const result = hintMod.installPromptHint(fakeCtx, hintMod.resolveHintText(''))
   assert.equal(result.registered, true)
   assert.equal(captured.name, hintMod.PROMPT_SECTION_NAME)
   assert.equal(captured.order, hintMod.PROMPT_SECTION_ORDER)
   assert.equal(captured.text, hintMod.DEFAULT_PROMPT_HINT)
   assert.equal(result.chars, hintMod.DEFAULT_PROMPT_HINT.length)
+})
+await test('ctx.get 拿不到服务 → 降级（不因缺服务而让插件不加载）', () => {
+  const result = hintMod.installPromptHint({ get: () => undefined }, hintMod.resolveHintText(''))
+  assert.equal(result.registered, false)
+  assert.match(result.reason, /unavailable/)
+})
+await test('属性兜底路径仍可用（ctx.systemPrompt 直接可读时）', () => {
+  let captured = null
+  const result = hintMod.installPromptHint(
+    { systemPrompt: { section: (section) => { captured = section; return () => {} } } },
+    'custom'
+  )
+  assert.equal(result.registered, true)
+  assert.equal(captured.text, 'custom')
 })
 await test('段位夹在官方 web_fetch 段之后（2100 < order < 2200）', () => {
   // 依据 @deepseek-ai/dsh-system-prompt 的 SECTION_ORDERS：
