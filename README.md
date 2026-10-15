@@ -60,6 +60,26 @@ DSH 的出站代理策略**只在启动时读一次**环境变量。于是有两
 | **子进程同步** | 维护官方 `.env`，让 `curl` / `git` / `npm` 等子进程也用上代理 |
 | **诊断快照** | `$DSH_HOME/cache/dsh-proxy-auto/state.json` 每 3 秒自更新，外部可直接看"此刻走没走代理" |
 
+## 模型会自动用它吗？
+
+这是最容易踩的一点：**工具注册 ≠ 模型会调用**。官方 `web_fetch` 与 `proxy_fetch` 同时在工具清单里，
+而"抓网页"这个意图上模型更可能选名字更直白的 `web_fetch`（它按设计永远直连，对被墙站点必然失败），
+于是用户会以为"装了插件没效果"。本插件用两件事解决自调用：
+
+1. **注入系统提示词引导段**（段位 2150，紧跟官方 `web_fetch` 说明之后）：写明官方 `web_fetch`
+   永远直连、这类页面应改用 `proxy_fetch`，并明确**不要在试过之前就告诉用户站点不可达**。
+   可用 `promptHint: false` 关掉，或用 `promptHintText` 换成自己的话。
+2. **强化工具自身的描述**（模型可见的唯一元数据）：目标可能被墙时优先用它；`web_fetch`
+   失败或超时后，用同一 URL 重试。
+
+怎么确认它真的注入了：看快照里的 `promptHint` 字段。
+
+```jsonc
+"promptHint": { "registered": true, "name": "dsh-proxy-auto:web-fetch-hint", "order": 2150, "chars": 429 }
+```
+
+`registered: false` 会带 `reason`（例如服务不可用）；此时工具仍可用，只是需要模型自行选择它。
+
 ## 它不做什么
 
 - **不改 `web_fetch`**：那是官方设计；要读墙外页面请用 `proxy_fetch`。
@@ -108,6 +128,8 @@ Via: http://127.0.0.1:<你的代理端口>
 | `probeUrl` | wikipedia 条目 | 自证探针（留空=不探），结果写进快照 `probe` |
 | `persistToEnv` / `envFile` | true / `$DSH_HOME/.env` | 子进程环境维护 |
 | `tool` | true | 是否注册 `proxy_fetch` |
+| `promptHint` | true | 是否注入**系统提示词引导段**（让模型主动用 `proxy_fetch`，见下节） |
+| `promptHintText` | 空 | 自定义引导文案（留空 = 内置默认） |
 | `noProxy` | `localhost,127.0.0.1,::1,api.deepseek.com` | 直连名单（模型 API 直连 ⇒ 代理挂了对话仍可用） |
 | `debug` | false | 每次判定打日志 |
 

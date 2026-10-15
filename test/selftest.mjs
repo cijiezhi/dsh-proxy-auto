@@ -241,6 +241,44 @@ await test('派生数据落在 cache/ 下（快照不再散在 home 根）', () 
 })
 if (savedDshHome === undefined) { delete process.env.DSH_HOME } else { process.env.DSH_HOME = savedDshHome }
 
+console.log('\nprompt-hint.js · 系统提示词引导段（解决"模型不主动调用工具"）')
+const hintMod = await import(new URL('../lib/prompt-hint.js', import.meta.url).href)
+await test('注册参数正确：段名 / 段位 / 文案', () => {
+  let captured = null
+  const result = hintMod.installPromptHint(
+    { systemPrompt: { section: (section) => { captured = section; return () => {} } } },
+    hintMod.resolveHintText('')
+  )
+  assert.equal(result.registered, true)
+  assert.equal(captured.name, hintMod.PROMPT_SECTION_NAME)
+  assert.equal(captured.order, hintMod.PROMPT_SECTION_ORDER)
+  assert.equal(captured.text, hintMod.DEFAULT_PROMPT_HINT)
+  assert.equal(result.chars, hintMod.DEFAULT_PROMPT_HINT.length)
+})
+await test('段位夹在官方 web_fetch 段之后（2100 < order < 2200）', () => {
+  // 依据 @deepseek-ai/dsh-system-prompt 的 SECTION_ORDERS：
+  // TOOL_WEB_FETCH=2100、TOOL_LSP=2200 —— 我们的纠正段必须读在 web_fetch 说明之后。
+  assert.ok(hintMod.PROMPT_SECTION_ORDER > 2100, 'order 必须大于 TOOL_WEB_FETCH')
+  assert.ok(hintMod.PROMPT_SECTION_ORDER < 2200, 'order 必须小于 TOOL_LSP')
+})
+await test('服务缺失 → 降级为未注册（绝不因此加载失败）', () => {
+  const result = hintMod.installPromptHint({}, hintMod.resolveHintText(''))
+  assert.equal(result.registered, false)
+  assert.match(result.reason, /unavailable/)
+})
+await test('注册抛错 / 服务读取抛错 → 都降级不抛', () => {
+  const boom = { systemPrompt: { section: () => { throw new Error('duplicate') } } }
+  assert.equal(hintMod.installPromptHint(boom, 'x').registered, false)
+  const getterBoom = {}
+  Object.defineProperty(getterBoom, 'systemPrompt', { get() { throw new Error('no scope') } })
+  assert.equal(hintMod.installPromptHint(getterBoom, 'x').registered, false)
+})
+await test('自定义文案生效；空白回退默认', () => {
+  assert.equal(hintMod.resolveHintText('  用 proxy_fetch 抓  '), '用 proxy_fetch 抓')
+  assert.equal(hintMod.resolveHintText('   '), hintMod.DEFAULT_PROMPT_HINT)
+  assert.equal(hintMod.resolveHintText(undefined), hintMod.DEFAULT_PROMPT_HINT)
+})
+
 console.log(`\n结果：${passed} 通过，${failed} 失败${skipped > 0 ? `，${skipped} 跳过（无宿主环境）` : ''}`)
 restoreProxyEnv()
 if (failed > 0) process.exitCode = 1

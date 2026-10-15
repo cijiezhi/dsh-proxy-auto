@@ -64,6 +64,28 @@ provide a fetch tool that can reach blocked sites.**
 | **Child processes** | Maintains DSH's official `.env` so `curl` / `git` / `npm` inherit the proxy too |
 | **Status snapshot** | `$DSH_HOME/cache/dsh-proxy-auto/state.json`, refreshed every 3 s — inspect whether traffic is proxied right now |
 
+## Will the model actually use it?
+
+The easy trap: **registering a tool does not make the model call it.** The built-in `web_fetch` sits in the
+same tool list, and for "fetch a web page" the model tends to pick the more obvious name — but `web_fetch`
+bypasses every proxy by design, so it always fails on blocked sites. Users then conclude the plugin "does
+nothing". Two things fix self-invocation:
+
+1. **A system-prompt section** (order 2150, right after the official `web_fetch` section) stating that
+   `web_fetch` always connects directly, that blocked pages should go through `proxy_fetch`, and that the
+   model must not report a site as unreachable before trying it. Disable with `promptHint: false`, or
+   replace the wording with `promptHintText`.
+2. **A stronger tool description** (the only model-visible metadata): prefer it for sites that may be
+   blocked; retry the same URL with it after `web_fetch` fails or times out.
+
+To confirm it is really injected, look at `promptHint` in the snapshot:
+
+```jsonc
+"promptHint": { "registered": true, "name": "dsh-proxy-auto:web-fetch-hint", "order": 2150, "chars": 429 }
+```
+
+If `registered: false`, a `reason` says why; the tool still works, the model just has to choose it itself.
+
 ## What it does NOT do
 
 - **It does not change `web_fetch`** (official design) — use `proxy_fetch` for blocked pages.
@@ -102,6 +124,8 @@ Via: http://127.0.0.1:<your-proxy-port>
 | `probeUrl` | a wikipedia page | self-check probe (empty = off); result lands in the snapshot's `probe` |
 | `persistToEnv` / `envFile` | true / `$DSH_HOME/.env` | child-process environment |
 | `tool` | true | register `proxy_fetch` |
+| `promptHint` | true | inject a **system-prompt section** telling the model to prefer `proxy_fetch` (see below) |
+| `promptHintText` | empty | custom hint text (empty = built-in default) |
 | `noProxy` | `localhost,127.0.0.1,::1,api.deepseek.com` | always-direct list (model API stays direct, so a dead proxy never breaks chat) |
 | `debug` | false | log every decision |
 
