@@ -95,7 +95,7 @@ pwsh -File .\install.ps1 -Uninstall           # 反向：从 profile 摘掉
 **① 看状态快照**（插件每 3 秒自更新一次）：
 
 ```powershell
-Get-Content "$env:USERPROFILE\.dsh\dsh-proxy-auto.state.json" -Raw
+Get-Content "$env:USERPROFILE\.dsh\cache\dsh-proxy-auto\state.json" -Raw
 ```
 
 关注四个字段：
@@ -195,5 +195,5 @@ pwsh -File .\install.ps1 -Uninstall
 | 插件目录 | 你 clone / 解压出来的目录（`install.ps1` 会自动取它自己所在目录） |
 | profile 目录 | `%USERPROFILE%\.dsh\profiles\<profile>`（默认 profile 名 `desktop`） |
 | DSH 安装目录 | `%APPDATA%\npm\node_modules\@deepseek-ai\dsh`（脚本也会尝试 `npm root -g`） |
-| 状态快照 | `%USERPROFILE%\.dsh\dsh-proxy-auto.state.json` |
+| 状态快照 | `%USERPROFILE%\.dsh\cache\dsh-proxy-auto\state.json`（`$DSH_HOME` 生效时随之变化） |
 | 代理软件 | 任意提供 **HTTP 代理端口**的软件（如 Clash 的 `127.0.0.1:7890`）；系统代理开关写在注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings` |

@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const detect = await import(new URL('../lib/detect.js', import.meta.url).href)
@@ -204,6 +204,42 @@ if (gd === undefined) {
     assert.equal(gd.isInstalled(), false)
   })
 }
+
+console.log('\ndsh-home.js · 数据根目录解析（防"两处各拼路径"漂移）')
+const homeMod = await import(new URL('../lib/dsh-home.js', import.meta.url).href)
+const savedDshHome = process.env.DSH_HOME
+await test('未设 DSH_HOME → 落到 ~/.dsh', () => {
+  delete process.env.DSH_HOME
+  const home = homeMod.resolveDshHome()
+  assert.ok(home.endsWith('.dsh'), `意外路径：${home}`)
+  assert.ok(home.startsWith(homedir()), '应在用户主目录下')
+})
+await test('设了 DSH_HOME → 用它', () => {
+  process.env.DSH_HOME = 'X:/custom-home'
+  assert.equal(homeMod.resolveDshHome(), 'X:/custom-home')
+  assert.equal(homeMod.dshHomePath('.env'), join('X:/custom-home', '.env'))
+})
+await test('显式配置优先于 DSH_HOME', () => {
+  process.env.DSH_HOME = 'X:/custom-home'
+  assert.equal(homeMod.resolveDshHome('Y:/explicit'), 'Y:/explicit')
+})
+await test('空白值视为未设置（否则会悄悄落到当前工作目录）', () => {
+  for (const blank of ['', '   ']) {
+    process.env.DSH_HOME = blank
+    const home = homeMod.resolveDshHome()
+    assert.notEqual(home, process.cwd(), '空白 DSH_HOME 不得把 home 解析到工作目录')
+    assert.ok(home.endsWith('.dsh'), `空白值应回退到 ~/.dsh，实际：${home}`)
+    assert.equal(homeMod.resolveDshHome(blank), home, '显式空白也应回退')
+  }
+})
+await test('派生数据落在 cache/ 下（快照不再散在 home 根）', () => {
+  process.env.DSH_HOME = 'X:/custom-home'
+  const state = homeMod.dshCachePath('dsh-proxy-auto', 'state.json')
+  assert.equal(state, join('X:/custom-home', 'cache', 'dsh-proxy-auto', 'state.json'))
+  // 关键回归：以前是 home 根下的 dsh-proxy-auto.state.json，现在必须先经过 cache/
+  assert.ok(state.includes('cache'), '快照必须落在 cache 目录内')
+})
+if (savedDshHome === undefined) { delete process.env.DSH_HOME } else { process.env.DSH_HOME = savedDshHome }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败${skipped > 0 ? `，${skipped} 跳过（无宿主环境）` : ''}`)
 restoreProxyEnv()

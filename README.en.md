@@ -62,7 +62,7 @@ provide a fetch tool that can reach blocked sites.**
 | **No restart to toggle** | Swaps the global `fetch` dispatcher on demand: proxy → `EnvHttpProxyAgent`, none → bare `Agent` |
 | **`proxy_fetch` tool** | Fetches readable page text using an **explicit dispatcher**, so it works for blocked sites while the proxy is up |
 | **Child processes** | Maintains DSH's official `.env` so `curl` / `git` / `npm` inherit the proxy too |
-| **Status snapshot** | `~/.dsh/dsh-proxy-auto.state.json`, refreshed every 3 s — inspect whether traffic is proxied right now |
+| **Status snapshot** | `$DSH_HOME/cache/dsh-proxy-auto/state.json`, refreshed every 3 s — inspect whether traffic is proxied right now |
 
 ## What it does NOT do
 

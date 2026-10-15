@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   dsh-proxy-auto 体检脚本：确认插件装好了、宿主依赖齐全、自测通过。
 
@@ -31,7 +31,7 @@ $root = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 # DSH_HOME → 否则用平台对应的主目录（USERPROFILE 只在 Windows 有；HOME 覆盖 Unix）。
 $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { (Get-Location).Path }
 $dshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $homeDir '.dsh' }
-$statePath = Join-Path $dshHome 'dsh-proxy-auto.state.json'
+$statePath = Join-Path $dshHome 'cache/dsh-proxy-auto/state.json'
 $failures = 0
 
 function Section($title) { Write-Host ""; Write-Host "== $title" -ForegroundColor Cyan }

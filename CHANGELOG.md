@@ -7,6 +7,27 @@
 
 - 计划：把 `proxy_fetch` 的正文抽取做得更好（当前为轻量 HTML → 文本转换）。
 
+## [2.0.3] — 2026-10-15
+
+### 修复
+
+- **诊断快照改放 `$DSH_HOME/cache/dsh-proxy-auto/state.json`**（原来散在 home 根的
+  `~/.dsh/dsh-proxy-auto.state.json`）。它是派生数据——每 3 秒重写、丢了会自动重建——
+  按官方约定应落在 `cache/`（`dshCachePath()` 的用途就是"可重新生成的数据"），
+  而不是污染 home 根。旧的顶层文件可以直接删除，首次运行会自动在新位置重建。
+
+- **修掉一处路径派生缺陷**：快照路径原来用 `os.homedir() + '.dsh'` 拼，**忽略了 `$DSH_HOME`**，
+  于是用户把 home 设到别处时，快照会被写到错的地方。现在新增 `lib/dsh-home.js` 作为**唯一**解析处
+  （优先级与官方 `@deepseek-ai/dsh-home-paths` 一致：显式配置 > `$DSH_HOME` > `~/.dsh`；
+  空白值一律视为未设置，避免把 home 悄悄落到当前工作目录），`.env` 与快照都经它派生。
+  这一类"两处各拼路径、随后漂移"的重复，正是官方架构笔记
+  `single-harness-home-resolver` 在 harness 内部合并掉的问题，插件侧同理。
+
+### 测试
+
+- `test/selftest.mjs` 新增 5 条断言：三层优先级、显式覆盖、空白值回退、派生数据必须落在 `cache/`。
+  自测总数 17 → 22。
+
 ## [2.0.2] — 2026-10-09
 
 ### 新增

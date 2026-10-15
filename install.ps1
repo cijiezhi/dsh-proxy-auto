@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   安装 / 重装 dsh-proxy-auto 到指定的 DSH profile。
 
@@ -220,7 +220,7 @@ if (-not $Check) {
 Write-Host ''
 Write-Step '完成。请重启 DSH（宿主半边只在启动时加载）。'
 Write-Host '   重启后看这个文件确认状态：' -ForegroundColor Gray
-Write-Host "     $(Mask (Join-Path $dshHome 'dsh-proxy-auto.state.json'))" -ForegroundColor Gray
+Write-Host "     $(Mask (Join-Path $dshHome 'cache/dsh-proxy-auto/state.json'))" -ForegroundColor Gray
 Write-Host '   其中 proxy / dispatcherPatched / probe 三个字段即可判断是否生效。' -ForegroundColor Gray
 
 # 显式退出码：0 = 一切正常；1 = 自检有失败项。

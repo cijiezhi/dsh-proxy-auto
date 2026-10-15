@@ -58,7 +58,7 @@ DSH 的出站代理策略**只在启动时读一次**环境变量。于是有两
 | **开关免重启** | 全局 `fetch` 按需换 dispatcher：有代理 → `EnvHttpProxyAgent`，无代理 → 裸 `Agent` |
 | **`proxy_fetch` 工具** | 抓网页正文，走**显式 dispatcher**，因此代理开着时能读墙外站点 |
 | **子进程同步** | 维护官方 `.env`，让 `curl` / `git` / `npm` 等子进程也用上代理 |
-| **诊断快照** | `~/.dsh/dsh-proxy-auto.state.json` 每 3 秒自更新，外部可直接看"此刻走没走代理" |
+| **诊断快照** | `$DSH_HOME/cache/dsh-proxy-auto/state.json` 每 3 秒自更新，外部可直接看"此刻走没走代理" |
 
 ## 它不做什么
 
