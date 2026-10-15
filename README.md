@@ -80,6 +80,13 @@ DSH 的出站代理策略**只在启动时读一次**环境变量。于是有两
 
 `registered: false` 会带 `reason`（例如服务不可用）；此时工具仍可用，只是需要模型自行选择它。
 
+**失败兜底（B 方案）**：即使模型还是先调了官方 `web_fetch`（对被墙站点必然失败），插件会在
+`tools/post-execute` 事件上给这次调用**追加一条纠正上下文**——"`web_fetch` 按设计永远直连，
+同一 URL 改用 `proxy_fetch` 重试"。原始报错保持不变；可用 `fetchFallback: false` 关掉；
+快照里的 `fetchFallback.injected` 会累计"纠正过几次"。
+
+**A 与 B 的分工**：A（引导段）让模型**大概率**一开始就选对工具；B（兜底）保证即使选错也能被拉回来。
+
 ## 它不做什么
 
 - **不改 `web_fetch`**：那是官方设计；要读墙外页面请用 `proxy_fetch`。
@@ -130,6 +137,7 @@ Via: http://127.0.0.1:<你的代理端口>
 | `tool` | true | 是否注册 `proxy_fetch` |
 | `promptHint` | true | 是否注入**系统提示词引导段**（让模型主动用 `proxy_fetch`，见下节） |
 | `promptHintText` | 空 | 自定义引导文案（留空 = 内置默认） |
+| `fetchFallback` | true | **失败兜底**：官方 `web_fetch` 失败时自动提示模型改用 `proxy_fetch` 重试 |
 | `noProxy` | `localhost,127.0.0.1,::1,api.deepseek.com` | 直连名单（模型 API 直连 ⇒ 代理挂了对话仍可用） |
 | `debug` | false | 每次判定打日志 |
 

@@ -86,6 +86,15 @@ To confirm it is really injected, look at `promptHint` in the snapshot:
 
 If `registered: false`, a `reason` says why; the tool still works, the model just has to choose it itself.
 
+**Failure fallback (B)**: if the model still calls the built-in `web_fetch` first (which always fails on
+blocked sites), the plugin attaches a corrective context to that call on the `tools/post-execute` event —
+"`web_fetch` always connects directly by design; retry the same URL with `proxy_fetch`". The original error
+is left untouched. Disable with `fetchFallback: false`; `fetchFallback.injected` in the snapshot counts how
+many times the correction fired.
+
+**How A and B divide the work**: A (prompt section) makes the model pick the right tool most of the time;
+B (fallback) recovers the case where it picks the wrong one.
+
 ## What it does NOT do
 
 - **It does not change `web_fetch`** (official design) — use `proxy_fetch` for blocked pages.
@@ -126,6 +135,7 @@ Via: http://127.0.0.1:<your-proxy-port>
 | `tool` | true | register `proxy_fetch` |
 | `promptHint` | true | inject a **system-prompt section** telling the model to prefer `proxy_fetch` (see below) |
 | `promptHintText` | empty | custom hint text (empty = built-in default) |
+| `fetchFallback` | true | **failure fallback**: when the built-in `web_fetch` fails, tell the model to retry with `proxy_fetch` |
 | `noProxy` | `localhost,127.0.0.1,::1,api.deepseek.com` | always-direct list (model API stays direct, so a dead proxy never breaks chat) |
 | `debug` | false | log every decision |
 

@@ -294,6 +294,70 @@ await test('自定义文案生效；空白回退默认', () => {
   assert.equal(hintMod.resolveHintText(undefined), hintMod.DEFAULT_PROMPT_HINT)
 })
 
+console.log('\nfetch-fallback.js · web_fetch 失败兜底（B 方案）')
+const fbMod = await import(new URL('../lib/fetch-fallback.js', import.meta.url).href)
+await test('只对 web_fetch 的失败结果兜底', () => {
+  assert.equal(fbMod.shouldInjectFallback({ name: 'web_fetch' }, { isError: true }), true)
+  assert.equal(fbMod.shouldInjectFallback({ name: 'web_fetch' }, { isError: false }), false)
+  assert.equal(fbMod.shouldInjectFallback({ name: 'proxy_fetch' }, { isError: true }), false)
+  assert.equal(fbMod.shouldInjectFallback(undefined, { isError: true }), false)
+})
+await test('纠正上下文含 URL 且指向 proxy_fetch', () => {
+  const built = fbMod.buildFallbackContext('https://blocked.example/a')
+  const text = built.content[0].text
+  assert.match(text, /proxy_fetch/)
+  assert.match(text, /https:\/\/blocked\.example\/a/)
+  assert.equal(built.source.kind, 'plugin')
+  assert.equal(built.source.plugin, 'dsh-proxy-auto')
+})
+await test('post-execute 追加 additionalContexts，且保留原决定', async () => {
+  let handler = null
+  const { state } = fbMod.installFetchFallback({ on: (_n, fn) => ((handler = fn), () => {}) })
+  assert.equal(state.installed, true)
+  const decision = await handler(
+    { name: 'web_fetch', arguments: { url: 'https://blocked.example/' } },
+    { isError: true },
+    async () => ({ kind: 'accept' })
+  )
+  assert.equal(decision.kind, 'accept')
+  assert.equal(decision.additionalContexts.length, 1)
+  assert.match(decision.additionalContexts[0].content[0].text, /proxy_fetch/)
+  assert.equal(state.injected, 1)
+})
+await test('成功结果 / 其它工具 → 原样返回，不注入', async () => {
+  let handler = null
+  fbMod.installFetchFallback({ on: (_n, fn) => ((handler = fn), () => {}) })
+  const ok = await handler({ name: 'web_fetch', arguments: {} }, { isError: false }, async () => ({ kind: 'accept' }))
+  assert.equal(ok.additionalContexts, undefined)
+  const other = await handler({ name: 'read', arguments: {} }, { isError: true }, async () => ({ kind: 'accept' }))
+  assert.equal(other.additionalContexts, undefined)
+})
+await test('下游已 block → 不插手（尊重更早的策略）', async () => {
+  let handler = null
+  fbMod.installFetchFallback({ on: (_n, fn) => ((handler = fn), () => {}) })
+  const blocked = { kind: 'block', feedback: [{ type: 'text', text: 'x' }] }
+  const r = await handler({ name: 'web_fetch', arguments: {} }, { isError: true }, async () => blocked)
+  assert.equal(r.kind, 'block')
+  assert.equal(r.additionalContexts, undefined)
+})
+await test('已有 additionalContexts → 追加而不覆盖', async () => {
+  let handler = null
+  fbMod.installFetchFallback({ on: (_n, fn) => ((handler = fn), () => {}) })
+  const existing = { content: [{ type: 'text', text: 'existing' }], source: { kind: 'plugin', plugin: 'other' } }
+  const decision = await handler(
+    { name: 'web_fetch', arguments: {} },
+    { isError: true },
+    async () => ({ kind: 'accept', additionalContexts: [existing] })
+  )
+  assert.equal(decision.additionalContexts.length, 2)
+  assert.equal(decision.additionalContexts[0].content[0].text, 'existing')
+})
+await test('没有事件 API → 降级不抛', () => {
+  const { state } = fbMod.installFetchFallback({})
+  assert.equal(state.installed, false)
+  assert.match(state.reason, /event-api-unavailable/)
+})
+
 console.log(`\n结果：${passed} 通过，${failed} 失败${skipped > 0 ? `，${skipped} 跳过（无宿主环境）` : ''}`)
 restoreProxyEnv()
 if (failed > 0) process.exitCode = 1

@@ -7,6 +7,24 @@
 
 - 计划：把 `proxy_fetch` 的正文抽取做得更好（当前为轻量 HTML → 文本转换）。
 
+## [2.0.5] — 2026-10-15
+
+### 新增
+
+- **`web_fetch` 失败兜底（B 方案）**：在官方 `tools/post-execute` 事件上注册策略 ——
+  当官方 `web_fetch` 以失败结束时，给它**追加一条纠正上下文**（`PostToolDecision.additionalContexts`，
+  官方字段语义正是 "attach context for the next request"）：说明 `web_fetch` 按设计永远直连、
+  被墙站点必然失败，并提示"同一 URL 改用 `proxy_fetch` 重试"。
+
+  与引导段（A）的分工：A 让模型**大概率**选对工具；B 保证即使选错也能被纠正。
+  不动原始失败结果（保留报错便于排查）；下游策略已 `block` 时一律不插手；
+  任何异常只记录、按原决定返回 —— 兜底逻辑绝不影响工具调用本身。配置项 `fetchFallback`（默认开）。
+
+### 诊断
+
+- 快照新增 `fetchFallback` 字段（`installed` / `reason` / `injected` / `lastError`）：
+  直接看"兜底装没装上、已经纠正过几次"——排查"用户说装了没效果"的第二步。
+
 ## [2.0.4] — 2026-10-15
 
 ### 新增
