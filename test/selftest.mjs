@@ -307,8 +307,14 @@ await test('纠正上下文含 URL 且指向 proxy_fetch', () => {
   const text = built.content[0].text
   assert.match(text, /proxy_fetch/)
   assert.match(text, /https:\/\/blocked\.example\/a/)
-  assert.equal(built.source.kind, 'plugin')
-  assert.equal(built.source.plugin, 'dsh-proxy-auto')
+  assert.equal(built.source.kind, 'plugin:dsh-proxy-auto')
+  // 宿主把注入对象当完整 UserMessage 采纳：缺 id/role 会写坏会话
+  assert.equal(typeof built.id, 'string')
+  assert.equal(built.id.length > 0, true)
+  assert.equal(built.role, 'user')
+  // v4 会话格式硬拒已退役的 plugin 包装：source 只能是生产者自有 kind。
+  // 第一方插件用裸名；第三方插件按宿主迁移层约定用 `plugin:<插件名>`。
+  assert.equal(built.source.plugin, undefined)
 })
 await test('post-execute 追加 additionalContexts，且保留原决定', async () => {
   let handler = null
@@ -332,18 +338,39 @@ await test('成功结果 / 其它工具 → 原样返回，不注入', async () 
   const other = await handler({ name: 'read', arguments: {} }, { isError: true }, async () => ({ kind: 'accept' }))
   assert.equal(other.additionalContexts, undefined)
 })
-await test('下游已 block → 不插手（尊重更早的策略）', async () => {
+await test('下游已 block → 仍然注入，且原样保留 feedback', async () => {
   let handler = null
   fbMod.installFetchFallback({ on: (_n, fn) => ((handler = fn), () => {}) })
   const blocked = { kind: 'block', feedback: [{ type: 'text', text: 'x' }] }
   const r = await handler({ name: 'web_fetch', arguments: {} }, { isError: true }, async () => blocked)
   assert.equal(r.kind, 'block')
-  assert.equal(r.additionalContexts, undefined)
+  assert.equal(r.feedback[0].text, 'x')
+  assert.equal(r.additionalContexts.length, 1)
+  assert.match(r.additionalContexts[0].content[0].text, /proxy_fetch/)
+})
+await test('诊断计数：调用数 / 工具名 / 失败工具名 / 命中数 / 决定分布', async () => {
+  let handler = null
+  const { state } = fbMod.installFetchFallback({ on: (_n, fn) => ((handler = fn), () => {}) })
+  await handler(
+    { name: 'web_fetch', arguments: { url: 'https://blocked.example/' } },
+    { isError: true },
+    async () => ({ kind: 'accept' })
+  )
+  await handler({ name: 'read', arguments: {} }, { isError: false }, async () => ({ kind: 'accept' }))
+  assert.equal(state.calls, 2)
+  assert.equal(state.matched, 1)
+  assert.equal(state.injected, 1)
+  assert.equal(state.errorTools.includes('web_fetch'), true)
+  assert.equal(state.errorTools.includes('read'), false)
+  assert.equal(state.tools.includes('read'), true)
+  assert.equal(state.kinds.accept, 2)
+  assert.equal(state.lastDecisionKind, 'accept')
+  assert.equal(state.skippedKind, 0)
 })
 await test('已有 additionalContexts → 追加而不覆盖', async () => {
   let handler = null
   fbMod.installFetchFallback({ on: (_n, fn) => ((handler = fn), () => {}) })
-  const existing = { content: [{ type: 'text', text: 'existing' }], source: { kind: 'plugin', plugin: 'other' } }
+  const existing = { content: [{ type: 'text', text: 'existing' }], source: { kind: 'other-plugin' } }
   const decision = await handler(
     { name: 'web_fetch', arguments: {} },
     { isError: true },
