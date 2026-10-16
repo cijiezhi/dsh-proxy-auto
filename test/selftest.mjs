@@ -441,6 +441,25 @@ await test('apply(undefined / {}) 不抛，proxy_fetch 与引导段照常注册'
   }
 })
 
+console.log('\nproxy-seam.js · describeRoute 容错（宿主契约变化时不得把诊断本身弄崩）')
+await test('routeFor 返回 undefined / null → 报"未装载"，不抛', () => {
+  assert.match(seamMod.describeRoute({ routeFor: () => undefined }, 'https://a.example/'), /未装载/)
+  assert.match(seamMod.describeRoute({ routeFor: () => null }, 'https://a.example/'), /未装载/)
+})
+await test('routeFor 缺失 → 报出类型与 modulePath，不抛', () => {
+  const text = seamMod.describeRoute({ modulePath: 'x/y.js' }, 'https://a.example/')
+  assert.match(text, /routeFor/)
+  assert.match(text, /x\/y\.js/)
+})
+await test('正常判定：proxied+proxy → proxied via；否则 direct', () => {
+  assert.equal(seamMod.describeRoute({ routeFor: () => ({ proxied: false }) }, 'https://a.example/'), 'direct')
+  assert.equal(
+    seamMod.describeRoute({ routeFor: () => ({ proxied: true, proxy: 'http://127.0.0.1:7890' }) }, 'https://a.example/'),
+    'proxied via http://127.0.0.1:7890'
+  )
+  assert.equal(seamMod.describeRoute(undefined, 'https://a.example/'), '未装载（seam 为 undefined）')
+})
+
 console.log(`\n结果：${passed} 通过，${failed} 失败${skipped > 0 ? `，${skipped} 跳过（无宿主环境）` : ''}`)
 restoreProxyEnv()
 if (failed > 0) process.exitCode = 1
