@@ -36,6 +36,7 @@ pwsh -File .\install.ps1        # 幂等；-Profile web 换 profile，-Check 只
 
 ```powershell
 pwsh -File .\verify.ps1         # 体检：宿主依赖 / 自测 / 运行快照 / 仓库完整性，输出已脱敏可直接贴出
+                                # DSH 桌面版把依赖打包进 resources\app.asar，体检会借宿主运行时实测它们；无需 pnpm install、无需 junction
 ```
 
 ## 为什么需要它
@@ -156,8 +157,8 @@ Via: http://127.0.0.1:<你的代理端口>
 ## 开发与验证
 
 ```sh
-node test/standalone.mjs   # 9 项：零 junction 解析宿主依赖 / schema / 工具契约
-node test/selftest.mjs     # 37 项：探测底线 / 官方 seam 装卸 / .env 维护 / dispatcher 切换 / 提示词引导段 / 失败兜底
+node test/standalone.mjs   # 9 项（本机 3 通过 / 6 跳过）：零 junction 解析宿主依赖 / schema / 工具契约
+node test/selftest.mjs     # 37 项（本机 36 通过 / 1 跳过）：探测底线 / 官方 seam 装卸 / .env 维护 / dispatcher 切换 / 提示词引导段 / 失败兜底
 ```
 
 没装 DSH 的机器上，宿主相关用例会自动 SKIP（CI 即此情形），因此任何人 clone 下来都能跑通。

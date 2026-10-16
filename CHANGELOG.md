@@ -7,6 +7,58 @@
 
 - 计划：把 `proxy_fetch` 的正文抽取做得更好（当前为轻量 HTML → 文本转换）。
 
+## [2.0.7] — 2026-10-16
+
+### 修复（DSH 桌面应用下插件整条不激活）
+
+- **降级壳必须提供默认值**。`Config` 解析不到 `@deepseek-ai/schemastery` 时会走降级壳，
+  而旧降级壳的 `validate` 返回 `{}`、不提供任何默认值，宿主据此投影出 `config = undefined`，
+  `apply` 第一行读 `config.probeTimeoutMs` 即抛 `TypeError` → 条目 `did not activate`：
+  `proxy_fetch` 未注册、提示词引导段未注入、看门狗没启动（GUI 里显示"1 异常"）。
+  现在 `config-schema.js` 导出 `DEFAULT_CONFIG` 作为默认值唯一真相源，降级壳据此补齐；
+  `apply(ctx, config = {})` 另加一层兜底。**这是既有缺陷**（自 2.0 首发就在），
+  只在"宿主依赖不可见 + schemastery 解析失败"时暴露。
+
+### 修复（宿主依赖解析：DSH 桌面应用把依赖打进 app.asar）
+
+- **新增 `lib/host-module.js`**：以 **`resources/app.asar` 自身为锚点**建
+  `createRequire`，用 **CJS `require`** 加载（Electron 的 asar 支持打在 CJS loader 上，
+  对 asar 内文件做 ESM 动态 `import()` 长期有问题）。`undici` 与 `dsh-http-proxy`
+  两条腿都改走它，于是全局 dispatcher 与官方代理 seam 在桌面形态下恢复工作。
+- 背景：DSH 桌面 0.2.0-rc.2 把 `undici` / `schemastery` / `dsh-http-proxy` 全部打包进
+  `resources/app.asar`，文件系统不可见；插件又不在宿主 `node_modules` 树内。于是
+  `import('undici')` 找不到包、拼绝对路径普通 `fs` 看不见 asar 内容 →
+  `dispatcherModule: null`、`proxy_fetch` 报 `reading 'fetchWith'`、seam 报 `reading 'routeFor'`。
+
+### 修复（诊断与容错）
+
+- **装载诊断落盘**：`loadUndici` / `loadProxySeam` 全过程诊断写入快照
+  （`dispatcherError` / `seamError` / `initError`），能直接区分"没找到包"与"找到了但契约变了"。
+  早先失败时直接 `return undefined`，把诊断一起丢了，快照只剩 `null`，排查时极易被误导。
+- `describeRoute` 全面容错：`routeFor` 缺失、返回 `undefined/null`、`proxied` 字段缺失都不抛。
+  旧写法读 `route.proxied` 抛错后又被 catch 包装成"函数不存在"，把排查方向带偏过。
+- 装载结果 `?? null` 归一：原先 `undefined` 赋给初值 `null` 的变量，`=== null` 判断会漏掉它，
+  把"未找到 seam"错报成"已装载"。
+- `fetchWith` 回调在 dispatcher 不可用时退回宿主 `fetch`，不再直接抛。
+
+### 修复（体检脚本）
+
+- **`install.ps1` / `verify.ps1` 支持 DSH 桌面形态**。原先只认 npm 全局安装
+  （`%APPDATA%\npm\node_modules\@deepseek-ai\dsh`），桌面版上 `verify.ps1` 第一段就
+  throw，四段体检全跑不到。新增 `lib/resolve-dsh-install.ps1`：显式环境变量（`DSH_APP_DIR` /
+  `DSH_INSTALL_DIR`）/ 桌面形态 / npm 形态 / 可执行文件上行 四类候选。
+- **新增 `lib/probe-host-deps.mjs`**：PowerShell 的 `Test-Path` 看不到 asar 内部
+  （不是安装损坏），所以改为借**宿主自己的运行时**（`ELECTRON_RUN_AS_NODE=1` + 宿主 exe）
+  真实 `require` 一次三个宿主依赖。`verify.ps1` 新增 1.5 节展示实测结果。
+- `verify.ps1` 第 2 节不再误报"未在默认位置找到 DSH"，改报已探测到的安装路径。
+
+### 验证
+
+- 本机（DSH 桌面 0.2.0-rc.2 / electron 44.0.0 / node 24）：`selftest` 36 通过 0 失败、
+  `standalone` 3 通过 0 失败；快照 `dispatcherPatched:true`、
+  `seamRoute: proxied via http://127.0.0.1:7890`；`proxy_fetch` 实测 200 且 `Via` 为代理；
+  代理开↔关各在 5 秒内跟随、全程未重启 DSH；`verify.ps1` 首次完整跑完并输出"体检通过"。
+
 ## [2.0.6] — 2026-10-15
 
 ### 变更

@@ -2,7 +2,8 @@
 
 > 用途：**换电脑、DSH 升级后插件失效、或想从头重来**时，照着这份从零装回去。
 > 设计目标就是"能重装"：插件**不静态依赖任何 `@deepseek-ai/*` 包**，
-> `schemastery` 与 `undici` 都在运行时按宿主安装路径解析，所以**不需要 pnpm install、不需要建 junction**。
+> `schemastery` 与 `undici` 都在运行时按宿主安装路径解析（DSH 桌面版会把这些包打进
+> `resources\app.asar`，插件以 asar 自身为锚点解析它们），所以**不需要 pnpm install、不需要建 junction**。
 
 ---
 
@@ -118,8 +119,8 @@ proxy_fetch https://en.wikipedia.org/wiki/Naruto
 **③ 跑自测**（在插件目录）：
 
 ```powershell
-node test/standalone.mjs   # 9 项：零 junction 解析 / schema 默认值 / 工具契约（与官方编译深比较）
-node test/selftest.mjs     # 17 项：探测底线 / 官方 seam 装卸 / .env 维护 / 全局 dispatcher 切换
+node test/standalone.mjs   # 9 项（本机 3 通过 / 6 跳过）：零 junction 解析 / schema 默认值 / 工具契约（与官方编译深比较）
+node test/selftest.mjs     # 37 项（本机 36 通过 / 1 跳过）：探测底线 / 官方 seam 装卸 / .env 维护 / 全局 dispatcher 切换 / 提示词引导段 / 失败兜底
 ```
 
 ---

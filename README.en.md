@@ -155,8 +155,8 @@ Via: http://127.0.0.1:<your-proxy-port>
 ## Development
 
 ```sh
-node test/standalone.mjs   # 9 tests: host-package resolution without junctions / schema / tool contract
-node test/selftest.mjs     # 37 tests: detection guarantees / official seam install & removal / .env / dispatcher / prompt section / failure fallback
+node test/standalone.mjs   # 9 tests (3 pass / 6 skip here): host-package resolution without junctions / schema / tool contract
+node test/selftest.mjs     # 37 tests (36 pass / 1 skip here): detection guarantees / official seam install & removal / .env / dispatcher / prompt section / failure fallback
 ```
 
 On a machine without DSH, host-dependent cases are skipped automatically (that is the CI case), so anyone
