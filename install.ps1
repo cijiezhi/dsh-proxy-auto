@@ -69,39 +69,19 @@ function Write-Warn2($text) { Write-Host "    !!  $(Mask $text)" -ForegroundColo
 $homeDir = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { (Get-Location).Path }
 $dshHome = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $homeDir '.dsh' }
 
-# 组合路径：基路径为空时返回 $null（调用处用 Where-Object 过滤）。
-# 用"返回值"而不是"往数组里追加"，是为了避开 PowerShell 脚本块的作用域陷阱：
-# 在脚本块里写 $script:candidates 会落到外层，曾经因此把候选列表清空、-Check 直接失败。
-function Combine-IfBase($base, $relative) {
-  if ([string]::IsNullOrWhiteSpace($base)) { return $null }
-  # 只接受绝对路径：`npm root -g` 在环境变量缺失时会吐出相对路径（甚至含 `${APPDATA}` 字面量），
-  # 直接拿来做候选会污染错误信息、也可能误命中当前目录。相对路径一律丢弃。
-  if (-not [IO.Path]::IsPathRooted($base)) { return $null }
-  return [IO.Path]::Combine($base, $relative)
+# ── 共用探测：npm 全局形态 / Electron 桌面形态（app.asar）/ 自定义路径都能认 ──
+# 探测逻辑集中在 lib/resolve-dsh-install.ps1：两个脚本曾各写一份，结果 verify.ps1
+# 只认 npm 全局形态，在桌面版上第一段就 throw（体检入口直接失效）。
+. (Join-Path (Split-Path $PSCommandPath -Parent) 'lib/resolve-dsh-install.ps1')
+$dshInstall = Resolve-DshInstall
+if (-not $dshInstall) {
+  throw (Get-DshInstallHint @(
+    "$env:APPDATA\npm\node_modules\@deepseek-ai\dsh",
+    '<应用根>\resources\app.asar\dsh',
+    '<应用根>\resources\app\dsh'
+  ))
 }
-
-function Resolve-DshInstall {
-  $npmRoot = $null
-  try { $npmRoot = (& npm root -g 2>$null) } catch { }
-  $candidates = @(
-    (Combine-IfBase $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh'),
-    (Combine-IfBase $env:HOME '.npm-global\lib\node_modules\@deepseek-ai\dsh'),
-    '/usr/local/lib/node_modules/@deepseek-ai/dsh',
-    '/usr/lib/node_modules/@deepseek-ai/dsh',
-    (Combine-IfBase $npmRoot '@deepseek-ai\dsh')
-  ) | Where-Object { $_ }
-
-  foreach ($candidate in $candidates) {
-    if ($candidate -and (Test-Path (Join-Path $candidate 'package.json'))) { return (Resolve-Path $candidate).Path }
-  }
-  $isWindowsHost = ($IsWindows -eq $true) -or ($env:OS -eq 'Windows_NT')
-  $hint = if ($isWindowsHost) {
-    '请确认 DSH 是用 npm 全局安装的，或用 -PluginPath / -Profile 指定。'
-  } else {
-    '本脚本主要为 Windows 编写；Linux/macOS 请按 INSTALL.md 的「手工安装」一节操作（同样只需改 profile 的 package.json）。'
-  }
-  throw "找不到 DSH 安装目录。$hint`n已尝试：`n  $($candidates -join "`n  ")"
-}
+$dshInstall = $dshInstall.TrimEnd('\', '/')
 
 $profileDir = Join-Path $dshHome "profiles\$Profile"
 $profilePackage = Join-Path $profileDir 'package.json'
@@ -204,9 +184,43 @@ $checks = @()
 $checks += @{ name = '插件入口存在'; ok = (Test-Path (Join-Path $PluginPath 'lib/index.js')) }
 $checks += @{ name = 'cordis.patch.yml 存在'; ok = (Test-Path $patchFile) }
 $checks += @{ name = 'patch 只有一个 insert 块（多块会 duplicate entry id）'; ok = ($insertBlocks -le 1) }
-$checks += @{ name = '宿主有 schemastery（运行时解析用）'; ok = (Test-Path (Join-Path $dshInstall 'node_modules/@deepseek-ai/schemastery/package.json')) }
-$checks += @{ name = '宿主有 dsh-http-proxy（官方代理 seam）'; ok = (Test-Path (Join-Path $dshInstall 'node_modules/@deepseek-ai/dsh-http-proxy/package.json')) }
-$checks += @{ name = '宿主有 undici（全局 dispatcher 用）'; ok = (Test-Path (Join-Path $dshInstall 'node_modules/undici/package.json')) }
+# 宿主依赖三连：DSH 桌面形态把依赖打进 resources\app.asar，PowerShell 的 Test-Path
+# 一律看不到（不是安装损坏，是 PowerShell 没有 Electron 的 asar 支持）。
+# 此时借**宿主自己的运行时**问一句"这些包到底能不能 require"（probe-host-deps.mjs）。
+$hostDepProbe = $null
+if ($dshInstall -match '\.asar') {
+  $probeScript = Join-Path $PluginPath 'lib/probe-host-deps.mjs'
+  # 从 …\resources\app.asar\dsh 取 resources 之前的部分作为应用根
+  $idx = $dshInstall.IndexOf('\resources\', [StringComparison]::OrdinalIgnoreCase)
+  $appRoot = if ($idx -gt 0) { $dshInstall.Substring(0, $idx) } else { $dshInstall }
+  $hostExe = @(Get-ChildItem -LiteralPath $appRoot -Filter '*.exe' -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -notmatch 'Uninstall|elevate' } | Select-Object -First 1).FullName
+  if ((Test-Path $probeScript) -and (Test-Path $hostExe)) {
+    try {
+      $savedRunAsNode = $env:ELECTRON_RUN_AS_NODE
+      $env:ELECTRON_RUN_AS_NODE = '1'
+      $probeText = (& $hostExe $probeScript 2>$null | Out-String)
+      if ($null -eq $savedRunAsNode) { Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue }
+      else { $env:ELECTRON_RUN_AS_NODE = $savedRunAsNode }
+      $hostDepProbe = $probeText | ConvertFrom-Json
+    } catch {
+      $hostDepProbe = $null
+    }
+  }
+}
+$depCheck = {
+  param($key, $label)
+  if ($null -ne $hostDepProbe -and $hostDepProbe.deps.$key) {
+    return @{ name = $label; ok = [bool]$hostDepProbe.deps.$key.ok }
+  }
+  return @{ name = $label; ok = (Test-Path (Join-Path $dshInstall "node_modules/$key/package.json")) }
+}
+$checks += (& $depCheck '@deepseek-ai/schemastery' '宿主有 schemastery（配置 schema）')
+$checks += (& $depCheck '@deepseek-ai/dsh-http-proxy' '宿主有 dsh-http-proxy（官方代理 seam）')
+$checks += (& $depCheck 'undici' '宿主有 undici（全局 dispatcher 用）')
+if ($null -ne $hostDepProbe) {
+  $checks += @{ name = "宿主依赖经由 app.asar 实测（运行时 $($hostDepProbe.node) / electron $($hostDepProbe.electron)）"; ok = $true }
+}
 $checks += @{ name = 'profile bundles 含插件'; ok = (@(Get-BundleList $json) -contains $packageName) }
 $checkFailures = 0
 foreach ($c in $checks) {

@@ -56,6 +56,10 @@ function Bad($text) { Write-Host "  [FAIL] $(Mask $text)" -ForegroundColor Red; 
 function Info($text) { Write-Host "  [info] $(Mask $text)" -ForegroundColor Gray }
 
 Section '1. 静态自检（含 profile 登记）'
+# 共用探测（与 install.ps1 同一份）：npm 全局形态 / Electron 桌面形态（app.asar）都能认。
+. (Join-Path $root 'lib/resolve-dsh-install.ps1')
+$dshInstall = Resolve-DshInstall
+if ($dshInstall) { Info "DSH 安装：$dshInstall" }
 $checkScript = Join-Path $root 'install.ps1'
 if (Test-Path $checkScript) {
   # *>&1：把信息流也纳入管道——子脚本用 Write-Host 打印的内容同样要过脱敏（它不走管道是踩过的坑）。
@@ -65,6 +69,45 @@ if (Test-Path $checkScript) {
   Bad "缺少 install.ps1（$checkScript）"
 }
 
+Section '1.5 宿主依赖（借宿主运行时实测；PowerShell 看不到 app.asar 内部）'
+if ($dshInstall -match '\.asar') {
+  $idx = $dshInstall.IndexOf('\resources\', [StringComparison]::OrdinalIgnoreCase)
+  $appRoot = if ($idx -gt 0) { $dshInstall.Substring(0, $idx) } else { $dshInstall }
+  $hostExe = @(Get-ChildItem -LiteralPath $appRoot -Filter '*.exe' -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -notmatch 'Uninstall|elevate' } | Select-Object -First 1).FullName
+  $probeScript = Join-Path $root 'lib/probe-host-deps.mjs'
+  $probe = $null
+  if ($hostExe -and (Test-Path $probeScript)) {
+    try {
+      $savedRunAsNode = $env:ELECTRON_RUN_AS_NODE
+      $env:ELECTRON_RUN_AS_NODE = '1'
+      $probeText = (& $hostExe $probeScript 2>$null | Out-String)
+      if ($null -eq $savedRunAsNode) { Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue }
+      else { $env:ELECTRON_RUN_AS_NODE = $savedRunAsNode }
+      $probe = $probeText | ConvertFrom-Json
+    } catch { $probe = $null }
+  }
+  if ($probe) {
+    Ok "宿主运行时：node $($probe.node)$(if ($probe.electron) { " / electron $($probe.electron)" })"
+    foreach ($name in @('@deepseek-ai/schemastery', '@deepseek-ai/dsh-http-proxy', 'undici')) {
+      $d = $probe.deps.$name
+      if ($d.ok) { Ok "$name → $($d.resolved)" } else { Bad "$name 无法解析（插件运行期会缺这条腿）" }
+    }
+  } else {
+    Info "未能运行宿主探针（hostExe=$(Mask $hostExe)）；asar 内的依赖无法在 PowerShell 侧验证"
+  }
+} else {
+  # 非 asar 形态：用最朴素的 Test-Path 就够，不必起宿主进程。
+  foreach ($pair in @(
+      @('@deepseek-ai/schemastery', '宿主有 schemastery'),
+      @('@deepseek-ai/dsh-http-proxy', '宿主有 dsh-http-proxy'),
+      @('undici', '宿主有 undici')
+    )) {
+    $p = Join-Path $dshInstall "node_modules/$($pair[0])/package.json"
+    if (Test-Path $p) { Ok "$($pair[1])" } else { Bad "$($pair[1])（缺 $p）" }
+  }
+}
+
 Section '2. 运行环境'
 Info "PowerShell : $($PSVersionTable.PSVersion)"
 Info "平台       : $([System.Environment]::OSVersion.Platform)（$($PSVersionTable.Platform)）"
@@ -72,7 +115,13 @@ Info "Node       : $(try { (& node --version) } catch { '未找到' })"
 # 注意：APPDATA 只在 Windows 存在；直接 Join-Path 会在 Linux/macOS 上抛错（曾经就这么崩）。
 if ($env:APPDATA) {
   $dshPkg = Join-Path $env:APPDATA 'npm\node_modules\@deepseek-ai\dsh\package.json'
-  if (Test-Path $dshPkg) { Ok "DSH 安装：$(Split-Path $dshPkg -Parent)" } else { Info '未在默认位置找到 DSH（自定义安装属正常）' }
+  if (Test-Path $dshPkg) {
+    Ok "DSH 安装（npm 全局）：$(Split-Path $dshPkg -Parent)"
+  } elseif ($dshInstall) {
+    Ok "DSH 安装（已探测）：$dshInstall"
+  } else {
+    Info '未在默认位置找到 DSH（自定义安装属正常）'
+  }
 } else {
   Info '非 Windows：跳过系统代理注册表与默认安装位置检查（插件仍可用，走环境变量探测）'
 }
