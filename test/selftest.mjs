@@ -120,9 +120,13 @@ await test('注册表读不到（沙箱/非 Windows）→ 直连，且不抛异�
 
 console.log('\nproxy-seam.js · 与官方代理 seam 的联动')
 const seam = await seamMod.loadProxySeam()
-if (!seam) {
-  console.log('  ○ 装载官方 @deepseek-ai/dsh-http-proxy\n      SKIP：本机未安装 DSH（CI 环境属正常）')
-  console.log('  ○ 官方 seam 装/卸联动\n      SKIP：同上')
+if (!seam.install || typeof seam.routeFor !== 'function') {
+  // 装载函数现在**失败也返回对象**（带 diagnostics），所以判据要看 install/routeFor，而不是对象本身。
+  console.log('  ○ 装载官方 @deepseek-ai/dsh-http-proxy')
+  console.log('      SKIP：本机拿不到官方 seam（CI / 桌面 asar 形态属正常）')
+  if (seam.diagnostics?.length) console.log('        诊断：' + seam.diagnostics.slice(0, 3).join(' | ').slice(0, 220))
+  console.log('  ○ 官方 seam 装/卸联动')
+  console.log('      SKIP：同上')
 } else {
   await test('装载官方 @deepseek-ai/dsh-http-proxy', () => {
     assert.notEqual(seam, null)
