@@ -385,6 +385,62 @@ await test('没有事件 API → 降级不抛', () => {
   assert.match(state.reason, /event-api-unavailable/)
 })
 
+console.log('\nconfig.js + index.js · 宿主投影 config = undefined 时也绝不失效')
+// 事故背景（2026-10-16 实测）：DSH 桌面形态下 schemastery 只存在于 app.asar 内，
+// schema-loader 拼文件系统路径解析不到 → config.js 走降级壳。旧降级壳只返回 {}，
+// 宿主据此投影出 config = undefined，apply 首行读 config.probeTimeoutMs 抛 TypeError，
+// 整个条目 "did not activate"（GUI 显示"异常"）：无 proxy_fetch、无引导段、无看门狗。
+const cfgMod = await import(new URL('../lib/config.js', import.meta.url).href)
+const idxMod = await import(new URL('../lib/index.js', import.meta.url).href)
+const schemaMod2 = await import(new URL('../lib/config-schema.js', import.meta.url).href)
+
+await test('降级壳带完整默认值：validate 出来的 config 不是 undefined', () => {
+  const std = cfgMod.default?.['~standard']
+  assert.ok(std, '导出的 Config 必须是 Standard Schema（带 ~standard）')
+  const viaEmpty = std.validate(undefined).value
+  const viaObject = std.validate({}).value
+  assert.ok(viaEmpty && typeof viaEmpty === 'object', '宿主投影 undefined 时必须回落到默认值')
+  assert.equal(viaEmpty.probeTimeoutMs, schemaMod2.DEFAULT_CONFIG.probeTimeoutMs)
+  assert.equal(viaObject.watchIntervalMs, schemaMod2.DEFAULT_CONFIG.watchIntervalMs)
+  assert.equal(viaObject.promptHint, schemaMod2.DEFAULT_CONFIG.promptHint)
+  assert.equal(viaObject.fetchFallback, schemaMod2.DEFAULT_CONFIG.fetchFallback)
+})
+
+await test('调用方显式配置优先于降级默认值', () => {
+  const value = cfgMod.default['~standard'].validate({ watchIntervalMs: 7000 }).value
+  assert.equal(value.watchIntervalMs, 7000)
+  assert.equal(value.probeTimeoutMs, schemaMod2.DEFAULT_CONFIG.probeTimeoutMs)
+})
+
+await test('apply(undefined / {}) 不抛，proxy_fetch 与引导段照常注册', () => {
+  const tmpHome = mkdtempSync(join(tmpdir(), 'pxa-config-'))
+  const saved = process.env.DSH_HOME
+  process.env.DSH_HOME = tmpHome
+  const buildCtx = () => {
+    const seen = { tools: [], disposers: [] }
+    const ctx = {
+      logger: { info() {}, warn() {}, error() {} },
+      get: (n) => (n === 'systemPrompt' ? { section: (s) => (seen.hint = s, () => {}) } : undefined),
+      tools: { register: (def) => (seen.tools.push(def), () => {}) },
+      effect: (fn) => { seen.disposers.push(fn()); },
+    }
+    return { ctx, seen }
+  }
+  try {
+    for (const config of [undefined, {}]) {
+      const { ctx, seen } = buildCtx()
+      idxMod.apply(ctx, config)
+      assert.ok(seen.tools.length > 0, 'config 缺失时 proxy_fetch 仍必须注册')
+      assert.ok(seen.hint, 'config 缺失时引导段仍必须注入')
+      for (const dispose of seen.disposers) dispose()
+    }
+  } finally {
+    if (saved === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = saved
+    try { rmSync(tmpHome, { recursive: true, force: true }) } catch { /* 清理失败不影响结论 */ }
+  }
+})
+
 console.log(`\n结果：${passed} 通过，${failed} 失败${skipped > 0 ? `，${skipped} 跳过（无宿主环境）` : ''}`)
 restoreProxyEnv()
 if (failed > 0) process.exitCode = 1
